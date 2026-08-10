@@ -5,3 +5,5 @@ dist/
 .DS_Store
 work/
 schemas-json/
+apps/*/pipeline.config.yaml
+apps/*/.env
