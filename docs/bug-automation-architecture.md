@@ -40,25 +40,34 @@ RECEIVED -> ANALYZING -> AWAITING_APPROVAL -> FIXING -> TESTING -> DELIVERED
 
 ### Human-controlled steps (out of scope by design)
 
-Merging follows the manual promotion chain `bugfix branch -> release branch -> beta release -> beta -> prod release -> main`. This service never opens PRs and never writes to any branch except the bugfix branch it pushes. A future `PromotionService` would plug in right after the `DELIVERED` transition in [src/pipeline/phaseB.ts](src/pipeline/phaseB.ts).
+Merging follows the manual promotion chain `bugfix branch -> release branch -> beta release -> beta -> prod release -> main`. This service never opens PRs and never writes to any branch except the bugfix branch it pushes. A future `PromotionService` would plug in right after the `DELIVERED` transition in [apps/bugfix/src/pipeline/phaseB.ts](../apps/bugfix/src/pipeline/phaseB.ts).
 
 ## Provider abstraction
 
-Adapters implement one contract ([src/providers/types.ts](src/providers/types.ts)):
+Adapters implement one contract ([apps/bugfix/src/providers/types.ts](../apps/bugfix/src/providers/types.ts)):
 
 ```typescript
 interface AgentProvider {
   readonly name: string;
-  analyze(task: BugTask, ctx: RepoContext, hooks: RunHooks): Promise<AnalysisReport>;
-  fix(task: BugTask, ctx: RepoContext, approved: AnalysisReport, hooks: RunHooks): Promise<FixOutcome>;
+  analyze(
+    task: BugTask,
+    ctx: RepoContext,
+    hooks: RunHooks,
+  ): Promise<AnalysisReport>;
+  fix(
+    task: BugTask,
+    ctx: RepoContext,
+    approved: AnalysisReport,
+    hooks: RunHooks,
+  ): Promise<FixOutcome>;
 }
 ```
 
-The default is `CursorSdkProvider` ([src/providers/cursor.ts](src/providers/cursor.ts)), which runs a Cursor SDK local agent against the checkout and extracts structured output from a report file the agent writes. To add Claude Code, OpenCode, etc., implement the interface and register a factory in [src/providers/registry.ts](src/providers/registry.ts); select providers globally (`defaultProvider`) or per project (`provider`) in `pipeline.config.yaml`.
+The default is `CursorSdkProvider` ([apps/bugfix/src/providers/cursor.ts](../apps/bugfix/src/providers/cursor.ts)), which uses the shared `CursorAgentRunner` from `@ai-auto/providers` against the checkout and extracts structured output from a report file the agent writes. To add Claude Code, OpenCode, etc., implement the interface and register a factory in [apps/bugfix/src/providers/registry.ts](../apps/bugfix/src/providers/registry.ts); select providers globally (`defaultProvider`) or per project (`provider`) in `pipeline.config.yaml`.
 
 ## Structured report schemas
 
-Defined with Zod in [src/schemas/analysis.ts](src/schemas/analysis.ts) and [src/schemas/fix.ts](src/schemas/fix.ts); export JSON Schema documents with `npm run schemas:export` (written to `schemas-json/`).
+Defined with Zod in [apps/bugfix/src/schemas/analysis.ts](../apps/bugfix/src/schemas/analysis.ts) and [apps/bugfix/src/schemas/fix.ts](../apps/bugfix/src/schemas/fix.ts); export JSON Schema documents with `npm run schemas:export -w @ai-auto/bugfix` (written to `apps/bugfix/schemas-json/`).
 
 - **AnalysisReport** — `status` (`ok` | `cannot_find_root_cause` | `needs_more_info`), `bugUnderstanding` (restatement, expected vs. actual, severity), `rootCause` (mechanism + file/symbol/line citations), `proposedFix` (approach, files to touch, risk, test plan), `confidence` (0–1), `blockers`.
 - **FixReport** — `status` (`delivered` | `tests_failed` | `fix_failed`), `branchName`, `diffSummary` (per-file +/- and commits, computed from git, not agent claims), `testResults` (command, passed, output tail, new tests), `verification`, `deviations` from the approved plan.
@@ -68,44 +77,44 @@ Defined with Zod in [src/schemas/analysis.ts](src/schemas/analysis.ts) and [src/
 Prerequisites: Node.js 20+, MongoDB (any reachable instance), git with push access to the target repos (SSH key or credential helper on this machine), and a Cursor API key.
 
 ```bash
-npm install
-cp .env.example .env                                # fill in secrets
-cp pipeline.config.example.yaml pipeline.config.yaml # map your Jira projects to repos
-npm run dev                                          # or: npm start
+npm install                                          # from monorepo root
+cp apps/bugfix/.env.example apps/bugfix/.env
+cp apps/bugfix/pipeline.config.example.yaml apps/bugfix/pipeline.config.yaml
+npm run dev:bugfix                                  # or: npm run start -w @ai-auto/bugfix
 ```
 
 Verify: `curl http://localhost:3000/healthz` should return `{"ok":true,...}`.
 
-Run tests with `npm test` (uses an in-memory MongoDB; first run downloads a binary).
+Run tests with `npm run test:bugfix` (uses an in-memory MongoDB; first run downloads a binary).
 
 ### Configuration
 
-`.env` (see [.env.example](.env.example)): `CURSOR_API_KEY`, `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`, `WEBHOOK_SECRET`, `API_KEY`, `MONGODB_URI`, `MONGODB_DB`, `PORT`, plus optional `CONFIG_PATH`, `WORK_DIR`, `LOG_LEVEL`. Pointing the service at an existing project's MongoDB is just a `MONGODB_URI` change — it only creates/uses the `tickets`, `audit_log`, and `webhook_deliveries` collections.
+`.env` (see [apps/bugfix/.env.example](../apps/bugfix/.env.example)): `CURSOR_API_KEY`, `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`, `WEBHOOK_SECRET`, `API_KEY`, `MONGODB_URI`, `MONGODB_DB` (default `ai_bugfix`), `PORT` (default `3000`), plus optional `CONFIG_PATH`, `WORK_DIR`, `LOG_LEVEL`. Use a dedicated Mongo DB name so bugfix state never collides with the feature/maintenance services.
 
-`pipeline.config.yaml` (see [pipeline.config.example.yaml](pipeline.config.example.yaml)):
+`pipeline.config.yaml` (see [apps/bugfix/pipeline.config.example.yaml](../apps/bugfix/pipeline.config.example.yaml)):
 
 ```yaml
 defaultProvider: cursor
 providers:
   cursor: { model: composer-2.5 }
 projects:
-  PROJ:                      # Jira project key
+  PROJ: # Jira project key
     repo: git@github.com:org/repo.git
     baseBranch: beta
     testCommand: npm test
-    componentRepoMap:        # optional: Jira component -> repo override
+    componentRepoMap: # optional: Jira component -> repo override
       backend: git@github.com:org/backend.git
 ```
 
 ## HTTP API
 
-| Endpoint | Auth | Purpose |
-|---|---|---|
-| `POST /webhooks/jira` | `X-Webhook-Secret` header | Jira Automation entry point; queues Phase A |
-| `POST /api/tickets/:issueKey/approve` | `X-Api-Key` header | Approves the analysis; queues Phase B. `409` when the ticket isn't `AWAITING_APPROVAL`, so double-calls are harmless. Optional body: `{"notes": "reviewer remarks passed to the agent"}` |
-| `GET /api/tickets/:issueKey` | `X-Api-Key` | Ticket state, stored reports, full audit trail |
-| `GET /api/tickets?state=AWAITING_APPROVAL` | `X-Api-Key` | List tickets, filterable by state |
-| `GET /healthz` | none | Liveness incl. Mongo ping |
+| Endpoint                                   | Auth                      | Purpose                                                                                                                                                                                  |
+| ------------------------------------------ | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /webhooks/jira`                      | `X-Webhook-Secret` header | Jira Automation entry point; queues Phase A                                                                                                                                              |
+| `POST /api/tickets/:issueKey/approve`      | `X-Api-Key` header        | Approves the analysis; queues Phase B. `409` when the ticket isn't `AWAITING_APPROVAL`, so double-calls are harmless. Optional body: `{"notes": "reviewer remarks passed to the agent"}` |
+| `GET /api/tickets/:issueKey`               | `X-Api-Key`               | Ticket state, stored reports, full audit trail                                                                                                                                           |
+| `GET /api/tickets?state=AWAITING_APPROVAL` | `X-Api-Key`               | List tickets, filterable by state                                                                                                                                                        |
+| `GET /healthz`                             | none                      | Liveness incl. Mongo ping                                                                                                                                                                |
 
 Typical manual flow after Phase A posts its comment on the ticket:
 
@@ -129,7 +138,7 @@ Because approval is a plain HTTP call, any future trigger — a Slack button, a 
 cloudflared tunnel --url http://localhost:3000
 ```
 
-   Note the generated `https://<something>.trycloudflare.com` URL.
+Note the generated `https://<something>.trycloudflare.com` URL.
 
 2. In Jira: **Project settings → Automation → Create rule**:
    - **Trigger:** Issue created (optionally add a second rule for "Issue assigned").
@@ -170,33 +179,33 @@ cloudflared tunnel --url http://localhost:3000
 
 ## Repo layout
 
+This service lives in a monorepo under `apps/bugfix`. Shared infrastructure (Jira client, git, Mongo, Cursor runner, queue) is in `packages/*`. See [monorepo.md](monorepo.md) for ownership and the sibling `feature` / `maintenance` apps.
+
 ```
-src/
-  index.ts              entrypoint: config, Mongo, wiring, listen
-  server.ts             Fastify app assembly
-  config.ts             .env + pipeline.config.yaml loading, project resolution
-  context.ts            AppContext passed to routes and phase runners
-  errors.ts             pipeline failure taxonomy
-  routes/webhook.ts     Jira webhook (secret auth, dedupe, queueing)
-  routes/api.ts         approval + status API, healthz
-  pipeline/machine.ts   states + allowed transitions
-  pipeline/phaseA.ts    read-only analysis run
-  pipeline/phaseB.ts    fix run, independent test verification, delivery
-  pipeline/naming.ts    slug + bugfix branch naming
-  pipeline/queue.ts     serial in-process job queue
-  pipeline/testRunner.ts independent test execution
-  providers/types.ts    AgentProvider contract (BugTask, RepoContext, hooks)
-  providers/cursor.ts   Cursor SDK adapter (default provider)
-  providers/registry.ts provider selection/registration
-  providers/prompts.ts  shared analysis/fix prompt builders
-  git/repoManager.ts    clone cache, clean-base checkout, read-only guard, push
-  jira/client.ts        Jira Cloud REST client + comment renderers
-  jira/adf.ts           minimal ADF builders
-  store/mongo.ts        connection + indexes
-  store/tickets.ts      ticket state machine ops + delivery dedupe
-  store/audit.ts        append-only audit log
-tests/                  schemas, state machine/idempotency (in-memory Mongo), naming
-scripts/export-schemas.ts  JSON Schema export
+apps/bugfix/
+  src/
+    index.ts              entrypoint: config, Mongo, wiring, listen
+    server.ts             Fastify app assembly
+    config.ts             bugfix env defaults + re-exports from @ai-auto/config
+    context.ts            AppContext passed to routes and phase runners
+    routes/webhook.ts     Jira webhook (secret auth, dedupe, queueing)
+    routes/api.ts         approval + status API, healthz
+    pipeline/machine.ts   states + allowed transitions
+    pipeline/phaseA.ts    read-only analysis run
+    pipeline/phaseB.ts    fix run, independent test verification, delivery
+    pipeline/naming.ts    bugfix/<TICKET>-<slug> helpers
+    providers/types.ts    AgentProvider contract (BugTask + shared RepoContext)
+    providers/cursor.ts   Cursor SDK adapter (uses @ai-auto/providers runner)
+    providers/registry.ts provider selection/registration
+    providers/prompts.ts  analysis/fix prompt builders
+    jira/comments.ts      bugfix ADF comment renderers + labels
+    store/tickets.ts      ticket state machine ops + delivery dedupe
+    schemas/              AnalysisReport / FixReport / webhook Zod schemas
+  tests/                  schemas, state machine/idempotency (in-memory Mongo), naming
+  scripts/export-schemas.ts  JSON Schema export
+
+packages/                 shared by bugfix, feature, maintenance
+  config/  errors/  git/  http/  jira/  logger/  mongo/  pipeline-core/  providers/
 ```
 
 ## Future roadmap (designed for, not implemented)

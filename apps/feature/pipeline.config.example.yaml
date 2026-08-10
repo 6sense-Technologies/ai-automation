@@ -1,0 +1,14 @@
+# Feature/enhancement automation pipeline configuration.
+# Copy to pipeline.config.yaml and adjust.
+
+defaultProvider: cursor
+
+providers:
+  cursor:
+    model: composer-2.5
+
+projects:
+  PROJ:
+    repo: git@github.com:your-org/your-repo.git
+    baseBranch: beta
+    testCommand: npm test
