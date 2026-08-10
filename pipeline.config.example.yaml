@@ -1,0 +1,25 @@
+# AI bugfix pipeline configuration.
+# Copy to pipeline.config.yaml and adjust (or point CONFIG_PATH elsewhere).
+
+# Which agent provider to use when a project doesn't override it.
+defaultProvider: cursor
+
+# Provider-specific settings.
+providers:
+  cursor:
+    model: composer-2.5
+
+# Jira project key -> repo mapping and branch/test rules.
+projects:
+  PROJ:
+    repo: git@github.com:your-org/your-repo.git
+    baseBranch: beta
+    testCommand: npm test
+    # testTimeoutMs: 900000        # optional, default 15 minutes
+    # provider: cursor             # optional per-project provider override
+    # componentRepoMap:            # optional: Jira component -> repo, overrides `repo`
+    #   backend: git@github.com:your-org/backend.git
+    #   frontend: git@github.com:your-org/frontend.git
+
+# Future roadmap (designed, not implemented yet):
+# autoApproveThreshold: 0.9   # skip human approval when analysis confidence exceeds this
