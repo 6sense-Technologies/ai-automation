@@ -1,9 +1,14 @@
 import { mkdirSync } from "node:fs";
+import { RepoManager } from "@ai-auto/git";
+import { JiraClient } from "@ai-auto/jira";
 import { createLogger } from "@ai-auto/logger";
 import { AuditLog, connectMongo } from "@ai-auto/mongo";
 import { JobQueue } from "@ai-auto/pipeline-core";
 import { loadEnv, loadPipelineConfig } from "./config.js";
-import { buildServer, type FeatureContext } from "./server.js";
+import type { AppContext } from "./context.js";
+import { ProviderRegistry } from "./providers/registry.js";
+import { buildServer } from "./server.js";
+import { TicketStore } from "./store/tickets.js";
 
 async function main(): Promise<void> {
   const env = loadEnv();
@@ -12,16 +17,23 @@ async function main(): Promise<void> {
 
   mkdirSync(env.WORK_DIR, { recursive: true });
 
-  logger.info({ db: env.MONGODB_DB }, "connecting to MongoDB");
+  logger.info({ step: "boot.mongo", db: env.MONGODB_DB }, "connecting to MongoDB");
   const mongo = await connectMongo(env.MONGODB_URI, env.MONGODB_DB);
+  logger.info({ step: "boot.mongo_ok", db: env.MONGODB_DB }, "MongoDB connected");
 
-  const ctx: FeatureContext = {
+  const ctx: AppContext = {
     env,
     config,
     logger,
+    tickets: new TicketStore(mongo.db),
     audit: new AuditLog(mongo.db),
+    jira: new JiraClient(
+      { baseUrl: env.JIRA_BASE_URL, email: env.JIRA_EMAIL, apiToken: env.JIRA_API_TOKEN },
+      logger,
+    ),
+    repos: new RepoManager(env.WORK_DIR),
+    providers: new ProviderRegistry(env, config),
     queue: new JobQueue(logger),
-    mongo,
     mongoPing: async () => {
       try {
         await mongo.db.command({ ping: 1 });
@@ -35,8 +47,16 @@ async function main(): Promise<void> {
   const app = buildServer(ctx);
   await app.listen({ port: env.PORT, host: "0.0.0.0" });
   logger.info(
-    { port: env.PORT, projects: Object.keys(config.projects) },
-    "feature automation scaffold listening",
+    {
+      step: "boot.ready",
+      port: env.PORT,
+      projects: Object.keys(config.projects),
+      defaultProvider: config.defaultProvider,
+      workDir: env.WORK_DIR,
+      jira: env.JIRA_BASE_URL,
+      triggerLabel: "feature-improvement",
+    },
+    "feature-pipeline listening",
   );
 
   const shutdown = async (signal: string) => {
