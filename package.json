@@ -18,7 +18,8 @@
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "test:bugfix": "npm run test -w @ai-auto/bugfix"
+    "test:bugfix": "npm run test -w @ai-auto/bugfix",
+    "test:maintenance": "npm run test -w @ai-auto/maintenance"
   },
   "license": "MIT",
   "engines": {

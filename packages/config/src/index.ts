@@ -26,6 +26,8 @@ export function createEnvSchema(defaults: EnvDefaults) {
     CONFIG_PATH: z.string().default(defaults.configPath ?? "pipeline.config.yaml"),
     WORK_DIR: z.string().default(defaults.workDir),
     LOG_LEVEL: z.string().default("info"),
+    /** Optional GitHub token for opening PRs from the maintenance pipeline. */
+    GITHUB_TOKEN: z.string().optional(),
   });
 }
 
@@ -73,6 +75,13 @@ const projectConfigSchema = z.object({
   testTimeoutMs: z.number().int().positive().default(15 * 60 * 1000),
   provider: z.string().optional(),
   componentRepoMap: z.record(z.string(), z.string()).default({}),
+  /** Maintenance / dependency remediation (optional; npm defaults apply when omitted). */
+  packageManager: z.enum(["npm", "yarn", "pnpm"]).default("npm"),
+  installCommand: z.string().optional(),
+  buildCommand: z.string().optional(),
+  auditCommand: z.string().optional(),
+  maxVersionRetries: z.number().int().positive().default(3),
+  allowMajorUpdates: z.boolean().default(false),
 });
 
 export type ProjectConfig = z.infer<typeof projectConfigSchema>;
@@ -111,6 +120,12 @@ export interface ResolvedProject {
   testTimeoutMs: number;
   provider: string;
   model: string | undefined;
+  packageManager: "npm" | "yarn" | "pnpm";
+  installCommand?: string;
+  buildCommand?: string;
+  auditCommand?: string;
+  maxVersionRetries: number;
+  allowMajorUpdates: boolean;
 }
 
 /**
@@ -146,5 +161,11 @@ export function resolveProject(
     testTimeoutMs: project.testTimeoutMs,
     provider,
     model: config.providers[provider]?.model,
+    packageManager: project.packageManager,
+    installCommand: project.installCommand,
+    buildCommand: project.buildCommand,
+    auditCommand: project.auditCommand,
+    maxVersionRetries: project.maxVersionRetries,
+    allowMajorUpdates: project.allowMajorUpdates,
   };
 }

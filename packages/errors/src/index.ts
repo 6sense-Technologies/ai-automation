@@ -12,7 +12,9 @@ export type FailureReason =
   | "tests_failed"
   | "fix_failed"
   | "config_error"
-  | "internal_error";
+  | "internal_error"
+  | "no_suitable_version"
+  | "needs_manual";
 
 export class PipelineError extends Error {
   constructor(

@@ -1,0 +1,19 @@
+# Maintenance / dependency remediation pipeline (deterministic, no AI agent).
+# Copy to pipeline.config.yaml and adjust (or point CONFIG_PATH elsewhere).
+
+defaultProvider: generic
+
+# Map a logical project key (TeamPulse can pass projectKey, or use DEFAULT).
+projects:
+  DEFAULT:
+    repo: git@github.com:your-org/your-repo.git
+    baseBranch: main
+    packageManager: npm
+    installCommand: npm ci
+    buildCommand: npm run build
+    testCommand: npm test
+    auditCommand: npm audit --json
+    maxVersionRetries: 3
+    allowMajorUpdates: false
+    provider: generic
+    # testTimeoutMs: 900000

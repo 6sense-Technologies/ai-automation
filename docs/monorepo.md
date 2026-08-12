@@ -8,7 +8,7 @@ Three deployable automation services share one repository so developers can own 
 apps/
   bugfix/         # Bug analyze → approve → fix (production-ready pipeline)
   feature/        # Feature/enhancement automation (scaffold)
-  maintenance/    # Lint, security patches, dependency updates (scaffold)
+  maintenance/    # Deterministic dependency remediation (npm audit → validate → PR, no AI)
 packages/
   config/         # Env + pipeline.config.yaml loading
   errors/         # Pipeline failure taxonomy

@@ -2,6 +2,7 @@ import { MongoClient, type Db } from "mongodb";
 
 export const COLLECTIONS = {
   tickets: "tickets",
+  jobs: "jobs",
   auditLog: "audit_log",
   webhookDeliveries: "webhook_deliveries",
 } as const;
@@ -24,6 +25,11 @@ export async function connectMongo(uri: string, dbName: string): Promise<MongoHa
   await db.collection(COLLECTIONS.tickets).createIndexes([
     { key: { issueKey: 1 }, unique: true, name: "issueKey_unique" },
     { key: { state: 1, updatedAt: -1 }, name: "state_updatedAt" },
+  ]);
+  await db.collection(COLLECTIONS.jobs).createIndexes([
+    { key: { jobId: 1 }, unique: true, name: "jobId_unique" },
+    { key: { repositoryId: 1, updatedAt: -1 }, name: "repositoryId_updatedAt" },
+    { key: { state: 1, updatedAt: -1 }, name: "jobs_state_updatedAt" },
   ]);
   await db.collection(COLLECTIONS.auditLog).createIndexes([
     { key: { issueKey: 1, timestamp: 1 }, name: "issueKey_timestamp" },
