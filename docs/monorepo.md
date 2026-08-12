@@ -7,7 +7,7 @@ Three deployable automation services share one repository so developers can own 
 ```
 apps/
   bugfix/         # Bug analyze → approve → fix (production-ready pipeline)
-  feature/        # Feature/enhancement automation (scaffold)
+  feature/        # Feature plan → approve → implement (label-triggered)
   maintenance/    # Lint, security patches, dependency updates (scaffold)
 packages/
   config/         # Env + pipeline.config.yaml loading
