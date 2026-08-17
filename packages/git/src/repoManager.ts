@@ -112,9 +112,13 @@ export class RepoManager {
   async commitLeftovers(dir: string, message: string): Promise<boolean> {
     const git = this.git(dir);
     const status = await git.status();
-    const changes = status.files.filter((f) => !f.path.startsWith(`${REPORT_DIR}/`));
-    if (changes.length === 0) return false;
-    await git.add(["--", ".", `:!${REPORT_DIR}`]);
+    // Stage only real work files. Do not `git add .` — if REPORT_DIR is in the
+    // target repo's .gitignore (common), git errors with "paths are ignored".
+    const paths = status.files
+      .map((f) => f.path)
+      .filter((p) => p !== REPORT_DIR && !p.startsWith(`${REPORT_DIR}/`));
+    if (paths.length === 0) return false;
+    await git.add(["--", ...paths]);
     await git.commit(message);
     return true;
   }
