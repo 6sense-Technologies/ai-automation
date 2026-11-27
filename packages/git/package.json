@@ -14,7 +14,7 @@
   "dependencies": {
     "@ai-auto/errors": "*",
     "@ai-auto/providers": "*",
-    "simple-git": "^3.28.0"
+    "simple-git": "^4.0.0"
   },
   "devDependencies": {
     "@types/node": "^24.10.13",
